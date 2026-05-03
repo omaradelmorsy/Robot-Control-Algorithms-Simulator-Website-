@@ -13,18 +13,9 @@ The project folder containing all 6 files
 
 File Structure
 Make sure your folder looks exactly like this before opening anything:
-robot-control/
-│
-├── index.html
-│
-├── css/
-│   └── style.css
-│
-└── js/
-    ├── pid.js
-    ├── statespace.js
-    ├── trajectory.js
-    └── main.js
+robot-control/ index.html css/ style.css     js/ pid.js statespace.js  trajectory.js  main.js
+   
+
 
 Steps to Run
 Step 1 : Download all the files from Canvas or wherever they were shared.
