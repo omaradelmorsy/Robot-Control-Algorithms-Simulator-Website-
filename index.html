@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robot Control Algorithms</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="scanline"></div>
+<div class="noise"></div>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="13" stroke="#00ff88" stroke-width="1.5"/>
+        <circle cx="14" cy="14" r="5" fill="#00ff88"/>
+        <line x1="14" y1="1" x2="14" y2="7" stroke="#00ff88" stroke-width="1.5"/>
+        <line x1="14" y1="21" x2="14" y2="27" stroke="#00ff88" stroke-width="1.5"/>
+        <line x1="1" y1="14" x2="7" y2="14" stroke="#00ff88" stroke-width="1.5"/>
+        <line x1="21" y1="14" x2="27" y2="14" stroke="#00ff88" stroke-width="1.5"/>
+      </svg>
+      <span class="logo-text">ROBOCTL</span>
+    </div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="pid">PID Controller</button>
+      <button class="tab" data-tab="state">State-Space</button>
+      <button class="tab" data-tab="trajectory">Trajectory Tracking</button>
+    </nav>
+    <div class="status-pill" id="statusPill">
+      <span class="status-dot"></span>
+      <span id="statusText">IDLE</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!--  PID TAB -->
+<section class="tab-panel active" id="tab-pid">
+  <div class="panel-grid">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-title">PID Gains</div>
+        <div class="param-group">
+          <div class="param">
+            <div class="param-header">
+              <label>Kp <span class="param-desc">Proportional</span></label>
+              <span class="param-val" id="kpVal">2.5</span>
+            </div>
+            <input type="range" id="kp" min="0.1" max="8" step="0.1" value="2.5">
+            <div class="param-hint">How hard the robot chases the target</div>
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Ki <span class="param-desc">Integral</span></label>
+              <span class="param-val" id="kiVal">0.30</span>
+            </div>
+            <input type="range" id="ki" min="0" max="3" step="0.05" value="0.3">
+            <div class="param-hint">Corrects steady-state drift over time</div>
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Kd <span class="param-desc">Derivative</span></label>
+              <span class="param-val" id="kdVal">0.8</span>
+            </div>
+            <input type="range" id="kd" min="0" max="5" step="0.1" value="0.8">
+            <div class="param-hint">Dampens oscillation</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Environment</div>
+        <div class="param-group">
+          <div class="param">
+            <div class="param-header">
+              <label>Speed</label>
+              <span class="param-val" id="speedVal">1.0</span>
+            </div>
+            <input type="range" id="speed" min="0.2" max="4" step="0.1" value="1">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Noise σ</label>
+              <span class="param-val" id="noiseVal">0.5</span>
+            </div>
+            <input type="range" id="noise" min="0" max="8" step="0.1" value="0.5">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Mass</label>
+              <span class="param-val" id="massVal">1.0</span>
+            </div>
+            <input type="range" id="mass" min="0.5" max="6" step="0.1" value="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Path</div>
+        <div class="path-btns">
+          <button class="path-btn active" data-path="figure8">Figure-8</button>
+          <button class="path-btn" data-path="circle">Circle</button>
+          <button class="path-btn" data-path="zigzag">Zigzag</button>
+          <button class="path-btn" data-path="spiral">Spiral</button>
+        </div>
+      </div>
+
+      <div class="ctrl-btns">
+        <button class="btn-primary" id="pidRunBtn">▶ RUN</button>
+        <button class="btn-secondary" id="pidResetBtn">RESET</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="sim-wrapper">
+        <canvas id="pidCanvas"></canvas>
+        <div class="sim-overlay">
+          <span id="pidTime">t = 0.00s</span>
+        </div>
+        <div class="legend">
+          <span class="leg-item"><span class="leg-dot" style="background:#00ff88"></span>PID Robot</span>
+          <span class="leg-item"><span class="leg-dot" style="background:#ff4444"></span>No Control</span>
+          <span class="leg-item"><span class="leg-dot leg-dash" style="background:#4488ff"></span>Target Path</span>
+        </div>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">RMS Error</div>
+          <div class="metric-val" id="mRms">—</div>
+          <div class="metric-unit">px</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Max Error</div>
+          <div class="metric-val" id="mMax">—</div>
+          <div class="metric-unit">px</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Integral Wind-up</div>
+          <div class="metric-val" id="mWind">—</div>
+          <div class="metric-unit">acc</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Steps Run</div>
+          <div class="metric-val" id="mSteps">—</div>
+          <div class="metric-unit">ticks</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Tracking Error over Time</div>
+        <div class="chart-wrap" style="height:130px">
+          <canvas id="pidErrChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!--  STATE-SPACE TAB  -->
+<section class="tab-panel" id="tab-state">
+  <div class="panel-grid">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-title">System Model</div>
+        <div class="param-group">
+          <div class="param">
+            <div class="param-header">
+              <label>Damping ratio ζ</label>
+              <span class="param-val" id="zetaVal">0.70</span>
+            </div>
+            <input type="range" id="zeta" min="0.05" max="2" step="0.05" value="0.7">
+            <div class="param-hint">
+              &lt;1 = underdamped (oscillates)<br>
+              =1 = critically damped<br>
+              &gt;1 = overdamped (slow)
+            </div>
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Natural freq ωₙ</label>
+              <span class="param-val" id="wnVal">3.0</span>
+            </div>
+            <input type="range" id="wn" min="0.5" max="10" step="0.1" value="3.0">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Pole placement gain</label>
+              <span class="param-val" id="gainVal">1.0</span>
+            </div>
+            <input type="range" id="gain" min="0.1" max="5" step="0.1" value="1.0">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Initial Conditions</div>
+        <div class="param-group">
+          <div class="param">
+            <div class="param-header">
+              <label>x₀ position</label>
+              <span class="param-val" id="x0Val">-120</span>
+            </div>
+            <input type="range" id="x0" min="-180" max="180" step="1" value="-120">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>v₀ velocity</label>
+              <span class="param-val" id="v0Val">0</span>
+            </div>
+            <input type="range" id="v0" min="-80" max="80" step="1" value="0">
+          </div>
+        </div>
+      </div>
+
+      <div class="ctrl-btns">
+        <button class="btn-primary" id="ssRunBtn">▶ RUN</button>
+        <button class="btn-secondary" id="ssResetBtn">RESET</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="sim-wrapper">
+        <canvas id="ssCanvas"></canvas>
+        <div class="sim-overlay" id="ssOverlay">t = 0.00s</div>
+      </div>
+
+      <div class="two-col">
+        <div class="chart-card">
+          <div class="chart-title">Phase Portrait (x vs ẋ)</div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="phaseChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">State Response</div>
+          <div class="chart-wrap" style="height:200px">
+            <canvas id="stateChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="info-title">State-Space Form: ẋ = Ax + Bu</div>
+        <pre class="matrix-display" id="matrixDisplay">A = [[0, 1], [-ωₙ², -2ζωₙ]]
+B = [[0], [ωₙ²]]
+K = pole placement feedback gain</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRAJECTORY TAB -->
+<section class="tab-panel" id="tab-trajectory">
+  <div class="panel-grid">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-title">Trajectory Planner</div>
+        <div class="param-group">
+          <div class="param">
+            <div class="param-header">
+              <label>Look-ahead dist</label>
+              <span class="param-val" id="laVal">30</span>
+            </div>
+            <input type="range" id="la" min="5" max="80" step="1" value="30">
+            <div class="param-hint">Pure pursuit look-ahead distance</div>
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Max speed</label>
+              <span class="param-val" id="maxspVal">2.0</span>
+            </div>
+            <input type="range" id="maxsp" min="0.5" max="5" step="0.1" value="2.0">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Wheelbase L</label>
+              <span class="param-val" id="wheelVal">24</span>
+            </div>
+            <input type="range" id="wheel" min="8" max="50" step="1" value="24">
+          </div>
+          <div class="param">
+            <div class="param-header">
+              <label>Path smoothing</label>
+              <span class="param-val" id="smoothVal">0.5</span>
+            </div>
+            <input type="range" id="smooth" min="0" max="1" step="0.05" value="0.5">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Draw Waypoints</div>
+        <div class="param-hint" style="margin-bottom:10px">Click on the sim canvas to place waypoints. The robot will follow them.</div>
+        <div class="ctrl-btns" style="flex-direction:column">
+          <button class="btn-secondary" id="clearWpBtn">Clear Waypoints</button>
+          <button class="btn-secondary" id="defaultWpBtn">Load Demo Path</button>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:#888">
+          Waypoints: <span id="wpCount">0</span>
+        </div>
+      </div>
+
+      <div class="ctrl-btns">
+        <button class="btn-primary" id="trajRunBtn">▶ RUN</button>
+        <button class="btn-secondary" id="trajResetBtn">RESET</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="sim-wrapper" id="trajWrapper">
+        <canvas id="trajCanvas"></canvas>
+        <div class="sim-overlay" id="trajOverlay">Click canvas to add waypoints</div>
+        <div class="legend">
+          <span class="leg-item"><span class="leg-dot" style="background:#00ff88"></span>Robot</span>
+          <span class="leg-item"><span class="leg-dot" style="background:#ffcc00"></span>Look-ahead point</span>
+          <span class="leg-item"><span class="leg-dot" style="background:#4488ff"></span>Waypoints</span>
+        </div>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">Cross-track Error</div>
+          <div class="metric-val" id="mCte">—</div>
+          <div class="metric-unit">px</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Curvature κ</div>
+          <div class="metric-val" id="mKappa">—</div>
+          <div class="metric-unit">1/r</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Heading error</div>
+          <div class="metric-val" id="mHead">—</div>
+          <div class="metric-unit">deg</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Dist traveled</div>
+          <div class="metric-val" id="mDist">—</div>
+          <div class="metric-unit">px</div>
+        </div>
+      </div>
+
+      <div class="chart-card">
+        <div class="chart-title">Cross-track Error over Time</div>
+        <div class="chart-wrap" style="height:110px">
+          <canvas id="cteChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script src="js/pid.js"></script>
+<script src="js/statespace.js"></script>
+<script src="js/trajectory.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
